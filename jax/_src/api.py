@@ -746,12 +746,12 @@ def jacfwd(fun: Callable, argnums: int | Sequence[int] = 0,
   def jacfun(*args, **kwargs):
     f_partial, dyn_args = argnums_partial2(fun, argnums, args, kwargs)
     tree_map(partial(_check_input_dtype_jacfwd, holomorphic), dyn_args)
-    pushfwd: Callable = partial(_jvp, f_partial, dyn_args, has_aux=has_aux)
     if has_aux:
-      y, jac, aux = vmap(pushfwd, out_axes=(None, -1, None))(_std_basis(dyn_args))
+      y, pushfwd, aux = linearize(f_partial, *dyn_args, has_aux=True)
     else:
-      y, jac = vmap(pushfwd, out_axes=(None, -1))(_std_basis(dyn_args))
+      y, pushfwd = linearize(f_partial, *dyn_args)
       aux = None
+    jac = vmap(pushfwd, out_axes=-1)(*_std_basis(dyn_args))
     tree_map(partial(_check_output_dtype_jacfwd, holomorphic), y)
     example_args = dyn_args[0] if isinstance(argnums, int) else dyn_args
     jac_tree = tree_map(partial(_jacfwd_unravel, example_args), y, jac)

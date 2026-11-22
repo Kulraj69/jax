@@ -1119,6 +1119,30 @@ class MutableArrayTest(jtu.JaxTestCase):
     ans = jax.vmap(internally_pure)(jnp.arange(4.))
     self.assertAllClose(ans, jnp.array([1., 2., 3., 4.]))
 
+  @parameterized.product(jit=[False, True], freeze=[False, True], size=[0, 4])
+  def test_jacfwd_new_ref(self, jit, freeze, size):
+    def f(x):
+      ref = jax.new_ref(x)
+      return jax.freeze(ref) if freeze else ref[...]
+
+    def scalar(x):
+      ref = jax.new_ref(x)
+      ref[...] = ref[...] ** 3
+      return jnp.sum(jax.freeze(ref) if freeze else ref[...])
+
+    def with_aux(x):
+      y = f(x)
+      return y, {'value': y}
+
+    transform = jax.jit if jit else lambda f: f
+    x = jnp.arange(1., size + 1)
+    self.assertAllClose(transform(jax.jacfwd(f))(x), jax.jacrev(f)(x))
+    self.assertAllClose(transform(jax.hessian(scalar))(x),
+                        jax.jacrev(jax.jacrev(scalar))(x))
+    jac, aux = transform(jax.jacfwd(with_aux, has_aux=True))(x)
+    self.assertAllClose(jac, jnp.eye(size))
+    self.assertAllClose(aux['value'], x)
+
   def test_isinstance(self):
     ref = jax.new_ref(1.)
     self.assertIsInstance(ref, jax.Ref)
